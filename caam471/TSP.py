@@ -31,18 +31,58 @@ for i in range(numNodes):
 #Let Gurobi know that the model has changed
 model.update()
 
-#write out the lp in a lp-file
-model.write("TSP.lp")
-
 #optimize model
 model.optimize()
 
+def model_branch(origModel, varIdx, isLeft, bestModel, bestVal):
+    newModel = origModel.copy()
+    x = newModel.getVars()
+    if isLeft:
+        newModel.addConstr(x[varIdx] <= 0)
+    else:
+        newModel.addConstr(x[varIdx] >= 1)
+    newModel.update()
+    newModel.optimize()
+
+    if model.status == 2:
+        # Only explore branch if it is has potential
+        if newModel.getObjective().getValue() < bestVal:
+            anyFractions = False
+            for i in range(numEdges):
+                if (x[i].x > 0 and x[i].x < 1):
+                    anyFractions = True
+                    bestModel, bestVal = model_branch(newModel, i, True, bestModel, bestVal)
+                    bestModel, bestVal = model_branch(newModel, i, False, bestModel, bestVal)
+                    break
+            # If no variables are fractional, we return newModel, newVal
+            if not anyFractions:
+                bestModel = newModel
+                bestVal = newModel.getObjective().getValue()
+    return bestModel, bestVal
+
+
 #if status comes back as optimal (value=2) then print out ony nonzero solution values
 if model.status == 2:
-    cost = 0
+    bestModel = None
+    bestValue = np.inf
+    anyFractions = False
+    for i in range(numEdges):
+        if (x[i].x > 0 and x[i].x < 1):
+            anyFractions = True
+            bestModel, bestValue = model_branch(model, i, True, bestModel, bestValue)
+            bestModel, bestValue = model_branch(model, i, False, bestModel, bestValue)
+            break
+    # If no variables are fractional, we return newModel
+    if not anyFractions:
+        bestModel = model
+        bestValue = model.getObjective().getValue()
+
+    #write out the lp in a lp-file
+    bestModel.write("TSP.lp")
+
+    x = bestModel.getVars()
     for i in range(numEdges):
         if (x[i].x > 0):
-            cost += weights[i] * x[i].x
             # TODO: REMOVE AMT WHEN WE HAVE ONLY VALUES IN {0,1}
             print(str(edges[i][0]) + " " + str(edges[i][1]) + " " + str(weights[i]) + " - AMT: " + str(x[i].x))
-    print("The cost of the best tour is: " + str(cost))
+    print("The cost of the best tour is: " + str(bestValue))
