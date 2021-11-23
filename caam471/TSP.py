@@ -14,20 +14,18 @@ for i in range(numEdges):
     edges.append( (int(node1), int(node2)) )
     weights.append(float(weight))
 
-numVars = len(weights)
-
 #create model
 model = grb.Model()
 
 #define x variables and set objective values
-x = model.addVars(numVars, obj=weights, lb=0.0, ub=1.0, vtype=GRB.CONTINUOUS, name="x")
+x = model.addVars(numEdges, obj=weights, lb=0.0, ub=1.0, vtype=GRB.CONTINUOUS, name="x")
 
 #set objective function sense
 model.modelSense = GRB.MINIMIZE
 
 #add constraints to model
 for i in range(numNodes):
-    nodeIncident = [x[j] for j in range(numVars) if (edges[j][0] == i or edges[j][1] == i)]
+    nodeIncident = [x[j] for j in range(numEdges) if (edges[j][0] == i or edges[j][1] == i)]
     model.addConstr(sum(nodeIncident) == 2)
 
 #Let Gurobi know that the model has changed
@@ -42,7 +40,7 @@ model.optimize()
 #if status comes back as optimal (value=2) then print out ony nonzero solution values
 if model.status == 2:
     cost = 0
-    for i in range(numVars):
+    for i in range(numEdges):
         if (x[i].x > 0):
             cost += weights[i] * x[i].x
             # TODO: REMOVE AMT WHEN WE HAVE ONLY VALUES IN {0,1}
