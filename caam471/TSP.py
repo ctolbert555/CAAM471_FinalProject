@@ -2,23 +2,40 @@ import gurobipy as grb
 from gurobipy import GRB
 import numpy as np
 from collections import defaultdict
+import time
 
 def main():
     # Read in Raw, Finals, and Demand
 
-    f = open("att48.txt")
+    fnames = ["att48.txt", "berlin52.txt", "gr21.txt", "hk48.txt", "ulysses22.txt"]
+    idx = 0
+    for fname in fnames:
+        print("########################")
+        print(f"# File {idx}: {fname}")
+        print("########################")
+
+        f = open(fname)
+        numNodes, numEdges, edges, weights = read_file(f)
+
+        start = time.time()
+        TSP(numNodes, numEdges, edges, weights)
+        end = time.time()
+
+        print(f"\n\nProblem solved in {end-start} seconds\n\n")
+        idx += 1
+
+    # f = open("att48.txt")
     # f = open("berlin52.txt")
     # f = open("gr21.txt")
     # f = open("hk48.txt")
     # f = open("ulysses22.txt")
 
-    TSP(f)
+    # TSP(f)
 
-def TSP(f):
+def TSP(numNodes, numEdges, edges, weights):
     """
-    Solves and prints the travelling salesman problem for an input file f
+    Solves and prints the travelling salesman problem given the edges and weights
     """
-    numNodes, numEdges, edges, weights = read_file(f)
 
     model = create_model(numNodes, numEdges, edges, weights)
 
@@ -60,15 +77,20 @@ def TSP(f):
         model.update()
         model.optimize()
 
+    print("\n\n")
     if model.status == 2:
         #write out the lp in a lp-file
         bestModel.write("TSP.lp")
 
         x = bestModel.getVars()
+        print("Selected edges:")
+        print("Start\t End\t Weight")
         for i in range(numEdges):
             if (x[i].x > 0):
+                print(f"{edges[i][0]}\t {edges[i][1]}\t {weights[i]}")
                 # TODO: REMOVE AMT WHEN WE HAVE ONLY VALUES IN {0,1}
-                print(str(edges[i][0]) + " " + str(edges[i][1]) + " " + str(weights[i]) + " - AMT: " + str(x[i].x))
+                # print(str(edges[i][0]) + " " + str(edges[i][1]) + " " + str(weights[i]) + " - AMT: " + str(x[i].x))
+
         print("The cost of the best tour is: " + str(bestValue))
 
 
@@ -116,7 +138,7 @@ def greedy_ub(wDict, numNodes, numEdges, edges, weights):
         total += wDict[(curr_node,next_node)]
         curr_node = next_node;
 
-    return total
+    return total + wDict[(curr_node,0)]
 
 
 
