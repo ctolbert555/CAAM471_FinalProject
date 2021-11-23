@@ -2,8 +2,6 @@ import gurobipy as grb
 from gurobipy import GRB
 import numpy as np
 from collections import defaultdict
-from sys import exit
-import random
 
 def main():
     # Read in Raw, Finals, and Demand
@@ -50,9 +48,7 @@ def TSP(f):
             break; #infeasible
 
         bestModel, bestValue = solve_relaxation(model, numNodes, numEdges, edges, weights)
-        # print("Relaxation Solved! Current lower bound: " + str(bestValue))
         upper_bound = min([upper_bound, get_ub(bestModel, numNodes, numEdges, edges, weights, wDict)])
-        # print("Current upper bound: " + str(upper_bound))
 
         print(format_str.format(*[str(iter),str(bestValue),str(upper_bound)]))
         iter += 1
@@ -296,11 +292,11 @@ def add_cut(model, bestModel, numNodes, numEdges, edges):
             E[edges[i][1]].append(edges[i][0])
 
     #check connectedness
-    is_reached, connectedness = is_connected(V,E,random.randint(0,numNodes-1))
+    is_reached, connectedness = is_connected(V,E,0)
     if connectedness:
         return True
 
-    cycles = [set(is_reached.keys()).copy()] ##### maybe remove if slow
+    cycles = [set(is_reached.keys()).copy()]
     s = 1
     while len(is_reached) < numNodes:
         if not is_reached[s]:
@@ -308,19 +304,12 @@ def add_cut(model, bestModel, numNodes, numEdges, edges):
             cycles.append(set(new_reached.keys()).copy())
             for v in new_reached.keys():
                 is_reached[v] = True
-        s += 1;                                 ###### end maybe
-
-    # #add cut
-    # crossEdges = [x[i] for i in range(numEdges) if (is_reached[edges[i][0]] and not is_reached[edges[i][1]])
-    #                                                 or (is_reached[edges[i][1]] and not is_reached[edges[i][0]])]
-    # model.addConstr(sum(crossEdges) >= 2)
+        s += 1;
 
     for cycle in cycles:
         crossEdges = [x[i] for i in range(numEdges) if (((edges[i][0] in cycle) and not (edges[i][1] in cycle))
                                                         or ((edges[i][1] in cycle) and not (edges[i][0] in cycle)))]
         model.addConstr(sum(crossEdges) >= 2)
-
-    #print("\t Size of loop conatining 0: " + str(sum(1 for i in is_reached.keys() if is_reached[i])))
 
     return False
 
