@@ -3,6 +3,7 @@ from gurobipy import GRB
 import numpy as np
 from collections import defaultdict
 import time
+from copy import deepcopy
 
 def main():
     # Read in Raw, Finals, and Demand
@@ -307,26 +308,32 @@ def add_cut(model, bestModel, numNodes, numEdges, edges):
 
     #Create subgraph induced by tour
     V = range(numNodes)
-    E = defaultdict(list);
+    E = defaultdict(set);
     for i in range(numEdges):
         if (bestX[i].x == 1):
-            E[edges[i][0]].append(edges[i][1])
-            E[edges[i][1]].append(edges[i][0])
+            E[edges[i][0]].add(edges[i][1])
+            E[edges[i][1]].add(edges[i][0])
 
-    #check connectedness
-    is_reached, connectedness = is_connected(V,E,0)
-    if connectedness:
+    # #check connectedness
+    # is_reached, connectedness = is_connected(V,E,0)
+    # if connectedness:
+    #     return True
+    #
+    # cycles = [set(is_reached.keys()).copy()]
+    #
+    # s = 1
+    # while len(is_reached) < numNodes:
+    #     if not is_reached[s]:
+    #         new_reached, connectedness = is_connected(V,E,s)
+    #         cycles.append(set(new_reached.keys()).copy())
+    #         for v in new_reached.keys():
+    #             is_reached[v] = True
+    #     s += 1;
+
+    #Stoer-wagner time!
+    cycles = min_cut(list(V),E,0)
+    if len(cycles) == 0:
         return True
-
-    cycles = [set(is_reached.keys()).copy()]
-    s = 1
-    while len(is_reached) < numNodes:
-        if not is_reached[s]:
-            new_reached, connectedness = is_connected(V,E,s)
-            cycles.append(set(new_reached.keys()).copy())
-            for v in new_reached.keys():
-                is_reached[v] = True
-        s += 1;
 
     for cycle in cycles:
         crossEdges = [x[i] for i in range(numEdges) if (((edges[i][0] in cycle) and not (edges[i][1] in cycle))
@@ -360,7 +367,74 @@ def DFS(V,E,s,is_reached):
         if not is_reached[v]:
             DFS(V,E,v,is_reached)
 
+def min_cut_phase(V,E,a,V2Cut):
+    """
+    An optimized version of MinCutPhase of the Stoer-Wagner algorithm
+    We assume that we are only interested in 0 cuts
+    Returns the cut of the phase and V2Cut[t]
+    Modifies V2Cut
+    """
+    A = {a}
+    s = a
+    t = a
+    neighbors = set(E[a])
+    VmAmN = (V - A) - neighbors
+    while len(A) != len(V):
+        if len(neighbors) == 0 and len(VmAmN) == 0:
+            exit()
+        while len(neighbors) > 0: #keep adding connected neighbors
+            z = neighbors.pop()
+            A.add(z)
+            neighbors |= {v for v in E[z] if not (v in A)}
+            for v in neighbors:
+                VmAmN.discard(v)
 
+            s = t
+            t = z
+
+        if len(VmAmN) > 0:  #add unconnected neighbor
+            z = VmAmN.pop()
+            A.add(z)
+            neighbors |= {v for v in E[z] if not (v in A)}
+            for v in neighbors:
+                VmAmN.discard(v)
+
+            s = t
+            t = z
+
+    #get cut of phase
+    cotp = len(E[t])
+    cut = V2Cut[t]
+
+    #modify G
+    V.remove(t)
+    for v in E[t]:
+        E[v].remove(t)
+        if (s != v) and (s not in E[v]):
+            E[v].add(s)
+            E[s].add(v)
+
+    V2Cut[s] |= V2Cut[t]
+
+    return cotp, cut
+
+def min_cut(V,E,a):
+    """
+    An optimized version of the Stoer-Wagner algorithm
+    Returns a list of 0 cuts that have been found.
+    Returns an empty list if none exist
+    """
+    V = set(V)
+    E = deepcopy(E)
+    #dictionary that keeps track of the modifications of the graph
+    V2Cut = {v:{v} for v in V}  # v --> {v_1, v_2, v_3}
+    cuts = []
+    while len(V) > 1:
+        cotp, cut = min_cut_phase(V,E,a,V2Cut)
+        if(cotp == 0):
+            cuts.append(cut)
+
+    return cuts
 
 if __name__ == '__main__':
     main()
