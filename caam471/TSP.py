@@ -9,6 +9,7 @@ def main():
     # Read in Raw, Finals, and Demand
 
     fnames = ["att48.txt", "berlin52.txt", "gr21.txt", "hk48.txt", "ulysses22.txt"]
+    # fnames = ["berlin52.txt", "gr21.txt", "hk48.txt", "ulysses22.txt"]
     idx = 0
     for fname in fnames:
         print("########################")
@@ -46,6 +47,12 @@ def TSP(numNodes, numEdges, edges, weights):
     #optimize model
     model.optimize()
 
+    #add initial subtour eliminations (none should remain)
+    while add_cut(model, numNodes, numEdges, edges):
+        # print("ADDING CUT")
+        model.update()
+        model.optimize()
+
     #sorted weight dictionary
     wDict = dict()
     for i in range(numEdges):
@@ -59,24 +66,21 @@ def TSP(numNodes, numEdges, edges, weights):
     print(format_str.format(*["Iteration","Lower Bound","Upper Bound"]))
     print(format_str.format(*["0","0",str(upper_bound)]))
 
-    iter = 1
-    while True:
-        #if status comes back as optimal (value=2) then print out ony nonzero solution values
-        if model.status != 2:
-            break; #infeasible
+    # iter = 1
+    # while model.status == 2:
 
-        bestModel, bestValue = solve_relaxation(model, numNodes, numEdges, edges, weights)
-        upper_bound = min([upper_bound, get_ub(bestModel, numNodes, numEdges, edges, weights, wDict)])
+    bestModel, bestValue = solve_relaxation(model, numNodes, numEdges, edges, weights)
+    # upper_bound = min([upper_bound, get_ub(bestModel, numNodes, numEdges, edges, weights, wDict)])
 
-        print(format_str.format(*[str(iter),str(bestValue),str(upper_bound)]))
-        iter += 1
+    # print(format_str.format(*[str(iter),str(bestValue),str(upper_bound)]))
+    # iter += 1
 
-        if add_cut(model, bestModel, numNodes, numEdges, edges):
-            break;
+    # if add_cut(model, bestModel, numNodes, numEdges, edges):
+    #     break;
 
-        #re-solve
-        model.update()
-        model.optimize()
+    #re-solve
+    # model.update()
+    # model.optimize()
 
     print("\n\n")
     if model.status == 2:
@@ -272,11 +276,19 @@ def model_branch(origModel, varIdx, isLeft, bestModel, bestVal, numNodes, numEdg
     newModel = origModel.copy()
     x = newModel.getVars()
     if isLeft:
-        newModel.addConstr(x[varIdx] == 0)
+        x[varIdx].UB = 0
     else:
-        newModel.addConstr(x[varIdx] == 1)
+        x[varIdx].LB = 1
     newModel.update()
     newModel.optimize()
+
+    #add initial subtour eliminations (none should remain)
+    while add_cut(newModel, numNodes, numEdges, edges):
+        # print("ADDING CUT IN BRANCH")
+        newModel.update()
+        newModel.write("TSP.lp")
+        newModel.optimize()
+    # print("DONE ADDING CUTS IN THIS BRANCH")
 
     if origModel.status == 2:
         # Only explore branch if it is has potential
@@ -294,53 +306,38 @@ def model_branch(origModel, varIdx, isLeft, bestModel, bestVal, numNodes, numEdg
             if not anyFractions:
                 bestModel = newModel
                 bestVal = newModel.getObjective().getValue()
+                # print("NEW BEST MODEL W/ VAL: " + str(bestVal))
     return bestModel, bestVal
 
 
-def add_cut(model, bestModel, numNodes, numEdges, edges):
+def add_cut(model, numNodes, numEdges, edges):
     """
     Let C be the connected component containing 0.
     Adds a cut corresponding to the constraint: num edges exiting C >= 2
     returns True if best solution is feasible in the master problem, false otherwise.
     """
-    bestX = bestModel.getVars();
     x = model.getVars();
 
     #Create subgraph induced by tour
     V = range(numNodes)
-    E = defaultdict(set);
+    E = defaultdict(dict)
     for i in range(numEdges):
-        if (bestX[i].x == 1):
-            E[edges[i][0]].add(edges[i][1])
-            E[edges[i][1]].add(edges[i][0])
-
-    # #check connectedness
-    # is_reached, connectedness = is_connected(V,E,0)
-    # if connectedness:
-    #     return True
-    #
-    # cycles = [set(is_reached.keys()).copy()]
-    #
-    # s = 1
-    # while len(is_reached) < numNodes:
-    #     if not is_reached[s]:
-    #         new_reached, connectedness = is_connected(V,E,s)
-    #         cycles.append(set(new_reached.keys()).copy())
-    #         for v in new_reached.keys():
-    #             is_reached[v] = True
-    #     s += 1;
+        #E formatted as {node: {connected node1: weight, connected node2: weight}, next_node: {etc}}
+        E[edges[i][0]][edges[i][1]] = x[i].x
+        E[edges[i][1]][edges[i][0]] = x[i].x
 
     #Stoer-wagner time!
-    cycles = min_cut(list(V),E,0)
-    if len(cycles) == 0:
-        return True
+    mincut_set, mincut_weight = min_cut(list(V),E,0)
+    
+    if mincut_weight >= 2:
+        return False
 
-    for cycle in cycles:
-        crossEdges = [x[i] for i in range(numEdges) if (((edges[i][0] in cycle) and not (edges[i][1] in cycle))
-                                                        or ((edges[i][1] in cycle) and not (edges[i][0] in cycle)))]
-        model.addConstr(sum(crossEdges) >= 2)
+    gammaEdges = [x[i] for i in range(numEdges) if ((edges[i][0] in mincut_set) and (edges[i][1] in mincut_set))]
+    model.addConstr(sum(gammaEdges) <= len(mincut_set) - 1)
+    
+    # print(mincut_set)
 
-    return False
+    return True
 
 
 def is_connected(V,E,s):
@@ -418,6 +415,57 @@ def min_cut_phase(V,E,a,V2Cut):
 
     return cotp, cut
 
+
+def min_cut_phase_new(V,E,a,V2Cut):
+    A = {a}
+    s = a
+    t = a
+    while len(A) != len(V):
+        #print("A:" + str(len(A)))
+        #print("V:" + str(len(V)))
+        connectedness = defaultdict(float)
+        for v in A:
+            for e,w in E[v].items():
+                if e not in A:
+                    connectedness[e] += w
+        z = None
+        max_w = 0
+        print("CONNECTEDNESS:")
+        for e,w in connectedness.items():
+            print(str(e) + ":" + str(w))
+            if w >= max_w:
+                z = e
+                max_w = w
+        #if rest of graph not connected
+        if max_w == 0:
+            return 0, A
+        A.add(z)
+        s = t
+        t = z
+
+    #get cut of the phase
+    cotp = sum(E[t].values())
+    cut = V2Cut[t]
+
+    #modify G
+    V.remove(t)
+    for v, w in E[t].items():
+        if v == s:
+            E[s].pop(t)
+        elif v in E[s]:
+            E[s][v] += w 
+        else:
+            E[s][v] = w
+    E.pop(t)
+
+    V2Cut[s] |= V2Cut[t]
+
+    # print("COTP: " + str(cotp))
+    # print("CUT: " + str(cut))
+
+    return cotp, cut
+
+
 def min_cut(V,E,a):
     """
     An optimized version of the Stoer-Wagner algorithm
@@ -428,13 +476,17 @@ def min_cut(V,E,a):
     E = deepcopy(E)
     #dictionary that keeps track of the modifications of the graph
     V2Cut = {v:{v} for v in V}  # v --> {v_1, v_2, v_3}
-    cuts = []
+    mincut = {}
+    mincut_val = np.inf
     while len(V) > 1:
-        cotp, cut = min_cut_phase(V,E,a,V2Cut)
+        cotp, cut = min_cut_phase_new(V,E,a,V2Cut)
         if(cotp == 0):
-            cuts.append(cut)
+            return cut, cotp
+        elif(cotp < mincut_val):
+            mincut = cut
+            mincut_val = cotp
 
-    return cuts
+    return mincut, mincut_val
 
 if __name__ == '__main__':
     main()
