@@ -8,7 +8,6 @@ from copy import deepcopy
 from sys import exit
 
 def main():
-    # Read in Raw, Finals, and Demand
 
     fnames = ["att48.txt", "berlin52.txt", "gr21.txt", "hk48.txt", "ulysses22.txt"]
     # fnames = ["berlin52.txt", "gr21.txt", "hk48.txt", "ulysses22.txt"]
@@ -73,15 +72,6 @@ def TSP(numNodes, numEdges, edges, weights):
 
     bestModel, bestValue = solve_relaxation(model, numNodes, numEdges, edges, weights)
 
-    print(f"Error Flag: {add_cut(model, numNodes, numEdges, edges)}")
-    x = bestModel.getVars()
-    V = range(numNodes)
-    E = defaultdict(list);
-    for i in range(numEdges):
-        if (x[i].x == 1):
-            E[edges[i][0]].append(edges[i][1])
-            E[edges[i][1]].append(edges[i][0])
-    print(is_connected(V,E,0))
     # upper_bound = min([upper_bound, get_ub(bestModel, numNodes, numEdges, edges, weights, wDict)])
 
     # print(format_str.format(*[str(iter),str(bestValue),str(upper_bound)]))
@@ -295,7 +285,7 @@ def model_branch(origModel, varIdx, isLeft, bestModel, bestVal, numNodes, numEdg
         newModel.update()
         newModel.write("TSP.lp")
         newModel.optimize()
-    print("DONE ADDING CUTS IN THIS BRANCH")
+    # print("DONE ADDING CUTS IN THIS BRANCH")
 
     if origModel.status == 2:
         # Only explore branch if it is has potential
@@ -325,6 +315,7 @@ def add_cut(model, numNodes, numEdges, edges):
     """
     x = model.getVars();
 
+    # print(len(model.getConstrs()))
     #Create subgraph induced by tour
     V = range(numNodes)
     E = defaultdict(dict)
@@ -343,11 +334,11 @@ def add_cut(model, numNodes, numEdges, edges):
     for mincut_set in cuts:
         gammaEdges = [x[i] for i in range(numEdges) if ((edges[i][0] in mincut_set) and (edges[i][1] in mincut_set))]
         model.addConstr(sum(gammaEdges) <= len(mincut_set) - 1)
+        # print(mincut_set)
+        # cycle = mincut_set
         # crossEdges = [x[i] for i in range(numEdges) if (((edges[i][0] in cycle) and not (edges[i][1] in cycle))
         #                                                 or ((edges[i][1] in cycle) and not (edges[i][0] in cycle)))]
         # model.addConstr(sum(crossEdges) >= 2)
-
-    # print(mincut_set)
 
     return True
 
@@ -460,12 +451,12 @@ def min_cut_phase_new(V,E,a,V2Cut):
         t = z
 
     #get cut of the phase
-    for v in E[t].keys():
-        if v not in V and E[t][v] != 0:
-            print("AAAAAAAAA")
-            exit()
-    cotp = sum(E[t][v] for v in V if v in E[t].keys())
-    # cotp = sum(E[t][a] for a in A if a != t and a in E[t].keys())
+    # for v in E[t].keys():
+    #     if v not in V and E[t][v] != 0:
+    #         print("AAAAAAAAA")
+    #         exit()
+    # cotp = sum(E[t][v] for v in V if v in E[t].keys())
+    cotp = max_w
     cut = V2Cut[t]
 
     #modify G
@@ -508,7 +499,7 @@ def min_cut(V,E,a):
     while len(V) > 1:
         # print(len(V))
         cotp, cut = min_cut_phase_new(V,E,a,V2Cut)
-        if cotp < 2:
+        if cotp < 2 - 0.01: #floating point error
             cuts.append(cut)
         # if(cotp == 0):
         #      return cut, cotp
